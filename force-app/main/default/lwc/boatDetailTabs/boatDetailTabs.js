@@ -1,5 +1,8 @@
-import { LightningElement } from 'lwc';
-
+import { LightningElement, wire } from 'lwc';
+import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
+import { APPLICATION_SCOPE, MessageContext, subscribe } from 'lightning/messageService';
+import { NavigationMixin } from 'lightning/navigation';
+import BOATMC from '@salesforce/messageChannel/BoatMessageChannel__c';
 // Custom Labels Imports
 // import labelDetails for Details
 import labelDetails from '@salesforce/label/c.Details';
@@ -19,9 +22,14 @@ import BOAT_ID_FIELD from '@salesforce/schema/Boat__c.Id';
 import BOAT_NAME_FIELD from '@salesforce/schema/Boat__c.Name';
 
 const BOAT_FIELDS = [BOAT_ID_FIELD, BOAT_NAME_FIELD];
-export default class BoatDetailTabs extends LightningElement {
+export default class BoatDetailTabs extends NavigationMixin(LightningElement) {
   boatId;
+
+  @wire(MessageContext) messageContext;
+
+  @wire(getRecord, {recordId:'$boatId',fields:BOAT_FIELDS})
   wiredRecord;
+
   label = {
     labelDetails,
     labelReviews,
@@ -32,10 +40,14 @@ export default class BoatDetailTabs extends LightningElement {
 
   // Decide when to show or hide the icon
   // returns 'utility:anchor' or null
-  get detailsTabIconName() { }
+  get detailsTabIconName() {
+    return (this.wiredRecord.data) ? 'utility:anchor' : null;
+   }
 
   // Utilize getFieldValue to extract the boat name from the record wire
-  get boatName() { }
+  get boatName() {
+    return getFieldValue(this.wiredRecord.data, BOAT_NAME_FIELD);
+   }
 
   // Private
   subscription = null;
@@ -43,14 +55,38 @@ export default class BoatDetailTabs extends LightningElement {
   // Subscribe to the message channel
   subscribeMC() {
     // local boatId must receive the recordId from the message
+    if (!this.subscription) {
+      this.subscription = subscribe(
+        this.messageContext, BOATMC,
+        (message) => {
+          this.boatId = message.recordId;
+        },
+        {
+          scope: APPLICATION_SCOPE
+        }
+      );
+    }
   }
 
   // Calls subscribeMC()
-  connectedCallback() { }
+  connectedCallback() {
+    this.subscribeMC();
+  }
 
   // Navigates to record page
-  navigateToRecordViewPage() { }
+  navigateToRecordViewPage() {
+    this[NavigationMixin.Navigate]({
+      type: 'standard__recordPage',
+      attributes: {
+        recordId: this.boatId,
+        actionName:'view'
+      }
+    });
+  }
 
   // Navigates back to the review list, and refreshes reviews component
-  handleReviewCreated() { }
+  handleReviewCreated() {
+    this.template.querySelector('lightning-tabset').activeTabValue = 'reviews';
+    this.template.querySelector('c-boat-reviews').refresh();
+  }
 }
